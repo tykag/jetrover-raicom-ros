@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<launch>
+    <arg name="debug"   default="false"/>
+    <!--底盘驱动(chassis driver)-->
+    <include file="$(find hiwonder_controller)/launch/hiwonder_controller.launch"/>
+    <include file="$(find hiwonder_peripherals)/launch/depth_cam.launch"/>
+    <node pkg="hiwonder_example" type="prevent_falling_node.py" name="prevent_falling" output="screen">
+        <param name="debug" value="$(arg debug)"/>
+        <rosparam file="$(find hiwonder_example)/config/plane_distance.yaml"   command="load"/>
+    </node>
+</launch>

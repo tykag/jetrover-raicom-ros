@@ -1,0 +1,26 @@
+[Unit]
+Description=start node
+After=NetworkManager.service time-sync.target hw_button_scan.service
+Wants=NetworkManager.service
+
+[Service]
+Type=simple
+User=hiwonder
+Environment=HOME=/home/hiwonder
+Environment=USER=hiwonder
+Environment=OPENBLAS_CORETYPE=ARMV8
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=PULSE_SERVER=unix:/run/user/1000/pulse/native
+WorkingDirectory=/home/hiwonder
+Restart=always
+RestartSec=20
+KillMode=control-group
+TimeoutStopSec=20
+TimeoutStartSec=90
+ExecStartPre=/home/hiwonder/ros_ws/src/hiwonder_bringup/scripts/wait_rrc.bash
+ExecStart=/home/hiwonder/ros_ws/src/hiwonder_bringup/scripts/source_env.bash roslaunch hiwonder_bringup bringup.launch
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<!--颜色识别-->
+<launch>
+    <arg name="enable_display"  default="false"/>
+    <include file="$(find hiwonder_peripherals)/launch/depth_cam.launch"/>
+
+    <node pkg="hiwonder_example" type="color_detect_node.py" name="color_detect" output="screen">
+        <param name="enable_display" value="$(arg enable_display)"/>
+        <rosparam file="$(find hiwonder_example)/scripts/color_detect/roi.yaml" command="load"/>
+    </node>
+</launch>

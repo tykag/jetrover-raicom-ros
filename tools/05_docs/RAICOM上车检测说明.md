@@ -1,0 +1,65 @@
+# RAICOM 小车 YOLO 检测 — 拷贝与启动说明
+
+## 1. 电脑上要拷到小车的文件
+
+| 电脑 | 小车 |
+|------|------|
+| `best_fixed.pt`（已拷） | `~/yolo_models/best_fixed.pt` |
+| `3 源码资料/tools/raicom_yolo_detect.py` | `~/yolo_models/raicom_yolo_detect.py` |
+| 整个 `D:\yolov5` 文件夹（推荐） | `~/yolov5` |
+
+用 WinSCP 把 `D:\yolov5` 拷到小车 Home 下，得到 `/home/hiwonder/yolov5`。  
+（体积较大；若已有同名目录可跳过。）
+
+拷完后在小车执行：
+
+```bash
+sed -i 's/\r$//' ~/yolo_models/raicom_yolo_detect.py
+chmod +x ~/yolo_models/raicom_yolo_detect.py
+```
+
+## 2. 启动相机（若自启已带相机可跳过）
+
+终端 A：
+
+```bash
+source ~/ros_ws/devel/setup.zsh
+export ROS_MASTER_URI=http://127.0.0.1:11311
+export ROS_IP=127.0.0.1
+unset ROS_HOSTNAME
+roscore
+```
+
+终端 B：
+
+```bash
+source ~/ros_ws/devel/setup.zsh
+export ROS_MASTER_URI=http://127.0.0.1:11311
+export ROS_IP=127.0.0.1
+unset ROS_HOSTNAME
+roslaunch hiwonder_peripherals depth_cam.launch
+```
+
+若 `start_app_node` 已在跑且 `rostopic list` 能看到 `/depth_cam/rgb/image_raw`，可不用手动开 A/B。
+
+## 3. 运行检测
+
+终端 C：
+
+```bash
+source ~/ros_ws/devel/setup.zsh
+export ROS_MASTER_URI=http://127.0.0.1:11311
+export ROS_IP=127.0.0.1
+unset ROS_HOSTNAME
+python3 ~/yolo_models/raicom_yolo_detect.py
+```
+
+- 窗口里应出现框和 `gear` / `bolt`
+- 检出两个时，上方会显示：`园区一<- xxx | yyy ->园区二`
+- 按 `q` 退出
+
+## 4. 常见问题
+
+- 提示找不到 `~/yolov5`：把电脑上的 `D:\yolov5` 拷到小车 Home。
+- 提示没有 torch：在小车执行 `python3 -c "import torch; print(torch.__version__)"`，把结果发我。
+- 没有画面：先 `rostopic echo /depth_cam/rgb/image_raw -n 1` 看相机是否在发布。

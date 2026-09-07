@@ -1,0 +1,33 @@
+<launch>
+    <arg name="usb_cam_name" default="depth_cam" />
+    <node name="$(arg usb_cam_name)" pkg="usb_cam" type="usb_cam_node" respawn="false" respawn_delay="2" output="screen" >
+        <param name="video_device" value="/dev/depth_cam" />  <!--usb摄像头已被映射为/dev/usb_cam(usb camera is mapped as /dev/usb_cam)-->
+        <param name="image_width" value="640" />
+        <param name="image_height" value="480" />
+        <param name="pixel_format" value="yuyv" />
+        <param name="camera_frame_id" value="$(arg usb_cam_name)_color_frame" />
+        <param name="io_method" value="mmap"/>
+        <remap from="/$(arg usb_cam_name)/camera_info"  to="/$(arg usb_cam_name)/rgb/camera_info" />
+    </node>
+
+    <node name="image_proc" pkg="image_proc" type="image_proc" ns="$(arg usb_cam_name)" >
+        <remap from="image_raw"  to="/$(arg usb_cam_name)/image_raw" />
+        <remap from="camera_info"  to="/$(arg usb_cam_name)/rgb/camera_info" />
+        <!--<remap from="/$(arg usb_cam_name)/image_rect_color"  to="/$(arg usb_cam_name)/rgb/image_raw" />-->
+    </node>
+
+    <node pkg="nodelet" type="nodelet" args="standalone image_proc/crop_decimate" name="crop_decimate" ns="$(arg usb_cam_name)">
+        <param name="y_offset" type="int" value="60" />
+        <param name="height" type="int" value="360" />
+        <remap from="camera_info"  to="/$(arg usb_cam_name)/rgb/camera_info" />
+        <remap from="camera/image_raw"  to="/$(arg usb_cam_name)/image_rect_color" />
+        <remap from="/$(arg usb_cam_name)/camera_out/image_raw"  to="/$(arg usb_cam_name)/rgb/image_raw" />
+    </node>
+
+  <!--
+  <node name="image_view" pkg="image_view" type="image_view" respawn="false" output="screen">
+    <remap from="image" to="/usb_cam/image_raw"/>
+    <param name="autosize" value="true" />
+  </node>
+  -->
+</launch>

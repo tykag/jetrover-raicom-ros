@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<launch>
+    <!--底盘驱动(chassis driver)-->
+    <include file="$(find hiwonder_controller)/launch/hiwonder_controller.launch"/>
+    <include file="$(find hiwonder_peripherals)/launch/depth_cam.launch"/>
+    <node pkg="hiwonder_example" type="track_object_node.py" name="track_object" output="screen"/>
+</launch>

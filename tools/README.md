@@ -1,0 +1,26 @@
+# tools 目录说明（RAICOM / JetRover）
+
+按模块存放，避免根目录堆文件。
+
+| 文件夹 | 用途 | 谁用 |
+|--------|------|------|
+| `01_startup/` | ROS 环境、开机后启动视觉 | 小车 |
+| `02_dataset/` | 采图 | 小车 |
+| `03_train_pc/` | 导出 ONNX、修类别名 | Windows 电脑 |
+| `04_vision_car/` | 车上检测脚本 | 小车 `~/yolo_models/` |
+| `05_docs/` | 说明文档 | 阅读 |
+
+## 当前主用（记住这几个）
+
+1. 开机环境：`01_startup/ros_env_auto.sh`
+2. 一键视觉：`01_startup/start_raicom_vision.sh`
+3. 检测程序：`04_vision_car/raicom_yolo_trt.py` → 拷到车上 `~/yolo_models/`
+4. 看板姿势：`04_vision_car/raicom_arm_pose.py` → 车上 `install` 后 `look_board` / `look_front`
+5. 赛规语音：`04_vision_car/raicom_voice.py` + `01_startup/start_raicom_voice.sh`（见 `05_docs/RAICOM语音赛规.md`）
+6. 总启动规则：仓库根目录 `启动规则-开机后怎么跑.md`
+
+## 废弃/备用
+
+- `raicom_yolo_detect.py`：旧 torch.hub，不要用
+- `raicom_yolo_onnx.py`：CPU 太慢，仅备用
+- `raicom_yolo_oneshot.py`：调试用，比赛全自动不用

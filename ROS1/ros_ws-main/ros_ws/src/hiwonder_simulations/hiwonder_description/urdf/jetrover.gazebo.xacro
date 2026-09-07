@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot name="hiwonder" xmlns:xacro="http://ros.org/wiki/xacro">
+    <xacro:property name="depth_camera_type"  value="$(env DEPTH_CAMERA_TYPE)"/>
+    <xacro:include filename="$(find hiwonder_description)/urdf/jetrover.xacro"/>
+    <xacro:include filename="$(find hiwonder_description)/urdf/car.gazebo.xacro"/>
+    <xacro:include filename="$(find hiwonder_description)/urdf/arm.gazebo.xacro"/>
+    <xacro:include filename="$(find hiwonder_description)/urdf/gripper.gazebo.xacro"/>
+    <xacro:include filename="$(find hiwonder_description)/urdf/imu.gazebo.xacro"/>
+    <xacro:include filename="$(find hiwonder_description)/urdf/lidar.gazebo.xacro"/>
+
+    <xacro:if value="${depth_camera_type == 'Dabai'}">
+        <xacro:include filename="$(find hiwonder_description)/urdf/depth_camera.gazebo.xacro"/>
+    </xacro:if>
+
+    <xacro:if value="${depth_camera_type == 'usb_cam'}">
+        <xacro:include filename="$(find hiwonder_description)/urdf/usb_camera.gazebo.xacro"/>
+    </xacro:if>
+</robot>
