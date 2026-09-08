@@ -20,6 +20,13 @@ class CircleMic:
         self.serialHandle.dtr = False
         self.serialHandle.setPort(port)
         self.serialHandle.open()
+        # CH341 开串口常会复位模组，先等它起来再握手
+        time.sleep(1.5)
+        try:
+            self.serialHandle.reset_input_buffer()
+            self.serialHandle.reset_output_buffer()
+        except Exception:
+            pass
 
         self.running = True
         self.key_type = r"{\"code.*?\"}"
@@ -81,12 +88,14 @@ class CircleMic:
         }
         
         param['content']['keyword'] = str_pinyin
-        header = [0xA5, 0x01, 0x05]  
-        print('setting wakeup keywords need about 30s')
-        print('setting ...')
+        header = [0xA5, 0x01, 0x05]
+        print('setting wakeup keywords need about 30s', flush=True)
+        print('setting ... keyword=%s' % str_pinyin, flush=True)
         self.send(header, param)
-        while time.time() - self.start_time < 30:
+        t0 = getattr(self, 'start_time', time.time())
+        while time.time() - t0 < 30:
             time.sleep(0.1)
+        print('>>>>> wakeup keyword written: %s' % str_pinyin, flush=True)
 
     # 计算校验和
     def calculate_checksum(self, bytes_list):
@@ -113,44 +122,61 @@ class CircleMic:
         
         self.serialHandle.write(packet)  # 发送主控消息
 
-    # 发送数据
-    def send(self, header, args):
-        self.serialHandle.write([0xa5, 0x01, 0x01, 0x04, 0x00, 0x00, 0x00, 0xa5, 0x00, 0x00, 0x00, 0xb0])  # 发送握手请求
-        while True:
+    # 发送数据（握手加超时，避免永远卡死写不进唤醒词、也进不了监听）
+    def send(self, header, args, handshake_timeout=10, reply_timeout=8):
+        old_timeout = self.serialHandle.timeout
+        try:
+            self.serialHandle.timeout = 0.05
+            handshake = [0xa5, 0x01, 0x01, 0x04, 0x00, 0x00, 0x00, 0xa5, 0x00, 0x00, 0x00, 0xb0]
+            self.serialHandle.write(handshake)
+            t0 = time.time()
+            next_hs = t0 + 0.1
+            sent = False
+            while time.time() - t0 < handshake_timeout:
+                if time.time() >= next_hs:
+                    self.serialHandle.write(handshake)
+                    next_hs = time.time() + 0.1
+                recv_data = self.serialHandle.read()
+                header_ = [b'\xa5', b'\x01', b'\xff']
+                if recv_data == header_[0]:
+                    recv_data = self.serialHandle.read()
+                    if recv_data == header_[1]:
+                        recv_data = self.serialHandle.read()
+                        if recv_data == header_[2]:
+                            recv_data = self.serialHandle.read(4)
+                            self.serialHandle.read((recv_data[1] << 8 | recv_data[0]) + 1)
+                            self.send_data(header, args)
+                            self.start_time = time.time()
+                            sent = True
+                            print('>>>>> mic handshake ok', flush=True)
+                            break
+                        else:
+                            recv_data = self.serialHandle.read(4)
+                            if recv_data:
+                                self.serialHandle.read((recv_data[1] << 8 | recv_data[0]) + 1)
+                            self.serialHandle.write(handshake)
+                            next_hs = time.time() + 0.1
+            if not sent:
+                print('>>>>> mic handshake timeout, send keyword anyway', flush=True)
+                self.send_data(header, args)
+                self.start_time = time.time()
+
             result = None
-            recv_data = self.serialHandle.read()
-            header_ = [b'\xa5', b'\x01', b'\xff'] 
-            if recv_data == header_[0]:
+            t1 = time.time()
+            while time.time() - t1 < reply_timeout:
                 recv_data = self.serialHandle.read()
-                if recv_data == header_[1]:
+                header_ = [b'\xa5', b'\x01', b'\x04']
+                if recv_data == header_[0]:
                     recv_data = self.serialHandle.read()
-                    if recv_data == header_[2]:
-                        recv_data = self.serialHandle.read(4)
-                        self.serialHandle.read((recv_data[1] << 8 | recv_data[0]) + 1)
-                        self.send_data(header, args)
-                        self.start_time = time.time()
-                        break
-                        
-                    else:  # 没有收到确认
-                        recv_data = self.serialHandle.read(4)
-                        self.serialHandle.read((recv_data[1] << 8 | recv_data[0]) + 1)
-                        
-                        time.sleep(0.1)
-                        self.serialHandle.write([0xa5, 0x01, 0x01, 0x04, 0x00, 0x00, 0x00, 0xa5, 0x00, 0x00, 0x00, 0xb0])  # 继续发送发送握手请求
-        
-        result = None
-        while True:
-            recv_data = self.serialHandle.read()
-            header_ = [b'\xa5', b'\x01', b'\x04'] 
-            if recv_data == header_[0]:
-                recv_data = self.serialHandle.read()
-                if recv_data == header_[1]:
-                    recv_data = self.serialHandle.read()
-                    if recv_data == header_[2]:
-                        recv_data = self.serialHandle.read(4)
-                        result = self.serialHandle.read((recv_data[1] << 8 | recv_data[0]) + 1)
-                        break
-        return result
+                    if recv_data == header_[1]:
+                        recv_data = self.serialHandle.read()
+                        if recv_data == header_[2]:
+                            recv_data = self.serialHandle.read(4)
+                            result = self.serialHandle.read((recv_data[1] << 8 | recv_data[0]) + 1)
+                            break
+            return result
+        finally:
+            self.serialHandle.timeout = old_timeout
 
     def val_map(self, x, in_min, in_max, out_min, out_max):
         return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
@@ -182,6 +208,7 @@ class CircleMic:
                                     msg = Int32()
                                     msg.data = int(angle)
                                     self.angle_pub.publish(msg)
+                                    print('>>>>> awake angle: %s' % int(angle), flush=True)
     
 class AwakeNode:
     def __init__(self, name):
@@ -203,7 +230,7 @@ class AwakeNode:
         if enable_setting:
             self.mic.switch_mic(mic_type)
             self.mic.set_wakeup_word(awake_word)
-        print('>>>>>Wake up word: %s' % awake_word)
+        print('>>>>>Wake up word: %s' % awake_word, flush=True)
         rate = rospy.Rate(50)
         while self.running:
             self.mic.get_awake_result()
