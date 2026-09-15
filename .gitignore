@@ -47,3 +47,38 @@ id_rsa.pub
 .ssh/
 credentials.json
 secrets.*
+
+# 不上传到公开仓库的安装包、工具和视频
+*.mp4
+*.avi
+*.mkv
+*.mov
+*.exe
+*.msi
+*.vsix
+*.dmg
+*.iso
+*串口调试助手*
+*固件烧录工具*
+
+# 硬件固件、运行库、音频和录音数据
+*.bin
+*.hex
+*.dll
+*.so
+*.dylib
+*.pcm
+*.wav
+
+# 训练/推理模型和运行时缓存
+*.engine
+*.onnx
+*.tflite
+*.task
+*.caffemodel
+*.prototxt
+*.dat
+*.ldata
+*.jet
+*.bak
+tmp/
