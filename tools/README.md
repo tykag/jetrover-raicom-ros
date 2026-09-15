@@ -16,7 +16,7 @@
 2. 一键视觉：`01_startup/start_raicom_vision.sh`
 3. 检测程序：`04_vision_car/raicom_yolo_trt.py` → 拷到车上 `~/yolo_models/`
 4. 看板姿势：`04_vision_car/raicom_arm_pose.py` → 车上 `install` 后 `look_board` / `look_front`
-5. 赛规语音（WonderEchoPro）：`04_vision_car/raicom_voice.py` + `01_startup/start_raicom_voice.sh`（见 `项目总结/语音-WonderEchoPro/`）
+5. 赛规语音（WonderEchoPro 串口）：`04_vision_car/raicom_voice.py` + `01_startup/start_raicom_voice.sh`（协议表见 `项目总结/语音-WonderEchoPro/`，**不用**讯飞 mic_init）
 6. 总启动规则：`项目总结/开机自启/2026-09-06-开机自启-启动规则.md`
 7. 项目文档总入口：`项目总结/总体/2026-09-07-总体-交接.md`
 
