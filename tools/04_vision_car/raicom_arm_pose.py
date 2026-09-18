@@ -176,8 +176,8 @@ def main():
 
     path = find_d6a(args.cmd)
     if path is None:
-        print("没有 %s.d6a，先运行: python3 raicom_arm_pose.py install" % args.cmd)
-        sys.exit(1)
+        print("没有 %s.d6a，改用直发舵机（raicom_arm.py）" % args.cmd)
+        os.execv(sys.executable, [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "raicom_arm.py"), args.cmd])
     play_d6a(path)
 
 

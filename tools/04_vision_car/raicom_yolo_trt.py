@@ -44,6 +44,8 @@ NAMES = ["gear", "bolt"]
 # 连续多少次结果一致才锁定映射（防抖）
 STABLE_NEED = 3
 SHOW = True  # 比赛可改 False 略省一点
+# mapping=锁P1/P2；detect=待派送单目标；idle=不推理
+DEFAULT_MODE = "mapping"
 
 
 def letterbox(im, new_shape=320, color=(114, 114, 114)):
@@ -180,12 +182,18 @@ class Node(object):
         self.model = TrtYolo()
         self.stable = []
         self.locked = None  # (left_name, right_name)
+        self.last_target = None
         self.pub_map = rospy.Publisher("/raicom/mapping", String, queue_size=1, latch=True)
         self.pub_ready = rospy.Publisher("/raicom/mapping_ready", Bool, queue_size=1, latch=True)
+        self.pub_target = rospy.Publisher("/raicom/target", String, queue_size=1)
         self.pub_ready.publish(Bool(data=False))
         rospy.set_param("/raicom/mapping_ready", False)
+        if not rospy.has_param("/raicom/yolo_mode"):
+            rospy.set_param("/raicom/yolo_mode", DEFAULT_MODE)
         rospy.Subscriber("/depth_cam/rgb/image_raw", Image, self.cb, queue_size=1, buff_size=2**24)
-        if SHOW:
+        show = bool(rospy.get_param("~show", SHOW))
+        self.show = show
+        if show:
             cv2.namedWindow("raicom_trt", cv2.WINDOW_NORMAL)
 
     def cb(self, msg):
@@ -230,13 +238,40 @@ class Node(object):
             rospy.set_param("/raicom/p2_class", right)
             rospy.loginfo("MAPPING LOCKED: %s", text)
 
+    def maybe_reset(self):
+        if not rospy.get_param("/raicom/reset_yolo", False):
+            return
+        self.locked = None
+        self.stable = []
+        self.last_target = None
+        self.pub_ready.publish(Bool(data=False))
+        rospy.set_param("/raicom/mapping_ready", False)
+        rospy.set_param("/raicom/reset_yolo", False)
+        rospy.loginfo("YOLO mapping reset")
+
+    def publish_best_target(self, items, fw, fh):
+        if not items:
+            self.last_target = None
+            return
+        items = sorted(items, key=lambda x: -x[2])
+        cx, name, conf, x1, y1, x2, y2 = items[0]
+        nx = max(0.0, min(1.0, cx / float(max(fw, 1))))
+        ny = max(0.0, min(1.0, ((y1 + y2) * 0.5) / float(max(fh, 1))))
+        text = "%s,%.3f,%.3f,%.3f" % (name, nx, ny, conf)
+        self.last_target = (name, nx, ny, conf)
+        self.pub_target.publish(String(data=text))
+        rospy.set_param("/raicom/target_class", name)
+        rospy.set_param("/raicom/target_conf", float(conf))
+
     def spin(self):
         rate = rospy.Rate(30)
         rospy.loginfo("raicom TRT auto running...")
         while not rospy.is_shutdown():
+            self.maybe_reset()
+            mode = rospy.get_param("/raicom/yolo_mode", DEFAULT_MODE)
             with self.lock:
                 frame = None if self.frame is None else self.frame.copy()
-            if frame is None:
+            if frame is None or mode == "idle":
                 rate.sleep()
                 continue
 
@@ -249,19 +284,24 @@ class Node(object):
                 name = NAMES[cls_id] if 0 <= cls_id < len(NAMES) else str(cls_id)
                 items.append(((x1 + x2) * 0.5, name, conf, x1, y1, x2, y2))
 
-            if self.locked is None:
+            if mode == "mapping" and self.locked is None:
                 self.try_lock_mapping([(i[0], i[1]) for i in items])
+            elif mode == "detect":
+                h, w = frame.shape[:2]
+                self.publish_best_target(items, w, h)
 
-            tip = "%.0fms n=%d" % (ms, len(items))
+            tip = "%.0fms n=%d mode=%s" % (ms, len(items), mode)
             if self.locked:
                 tip = "OK P1<-%s | %s->P2  %.0fms" % (self.locked[0], self.locked[1], ms)
-            elif len(items) >= 2:
+            elif mode == "mapping" and len(items) >= 2:
                 s = sorted(items, key=lambda x: x[0])
                 tip = "try P1<-%s | %s->P2  %.0fms" % (s[0][1], s[-1][1], ms)
+            elif mode == "detect" and self.last_target:
+                tip = "det %s conf=%.2f  %.0fms" % (self.last_target[0], self.last_target[3], ms)
 
             rospy.loginfo_throttle(1.0, tip)
 
-            if SHOW:
+            if self.show:
                 draw = frame
                 for cx, name, conf, x1, y1, x2, y2 in items:
                     color = (0, 255, 0) if name == "gear" else (0, 128, 255)
@@ -280,7 +320,7 @@ class Node(object):
                 if (cv2.waitKey(1) & 0xFF) == ord("q"):
                     break
             rate.sleep()
-        if SHOW:
+        if self.show:
             cv2.destroyAllWindows()
 
 

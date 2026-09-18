@@ -16,12 +16,13 @@
 1. 开机环境：`01_startup/ros_env_auto.sh`
 2. 一键视觉：`01_startup/start_raicom_vision.sh`
 3. 检测程序：`04_vision_car/raicom_yolo_trt.py` → 拷到车上 `~/yolo_models/`
-4. 看板姿势：`04_vision_car/raicom_arm_pose.py` → 车上 `install` 后 `look_board` / `look_front`
-5. 赛规语音（WonderEchoPro 串口）：`04_vision_car/raicom_voice.py` + `01_startup/start_raicom_voice.sh`（协议表见 `项目总结/语音-WonderEchoPro/`，**不用**讯飞 mic_init）
-6. **手柄上传**：`06_deploy/upload_to_car.py`（先改 `upload_to_car.ini` 的 IP；密码 ini 已 gitignore）
-7. 总启动规则：`项目总结/开机自启/2026-09-06-开机自启-启动规则.md`
-8. 项目文档总入口：`项目总结/总体/2026-09-07-总体-交接.md`
-9. 手柄说明：`项目总结/机械臂/2026-09-17-机械臂-手柄STM32对齐.md`
+4. 看板/抓放姿势：`04_vision_car/raicom_arm.py`（直发舵机，不必手写 d6a）
+5. 自主状态机：`04_vision_car/raicom_auto.py` + `01_startup/start_raicom_auto.sh`（说明见 `项目总结/总体/2026-09-18-总体-自主运行.md`）
+6. 赛规语音（WonderEchoPro 串口）：`04_vision_car/raicom_voice.py` + `01_startup/start_raicom_voice.sh`（协议表见 `项目总结/语音-WonderEchoPro/`，**不用**讯飞 mic_init）
+7. **手柄上传**：`06_deploy/upload_to_car.py`（先改 `upload_to_car.ini` 的 IP；密码 ini 已 gitignore）
+8. 总启动规则：`项目总结/开机自启/2026-09-06-开机自启-启动规则.md`
+9. 项目文档总入口：`项目总结/总体/2026-09-07-总体-交接.md`
+10. 手柄说明：`项目总结/机械臂/2026-09-17-机械臂-手柄STM32对齐.md`
 
 ## 废弃/备用
 
