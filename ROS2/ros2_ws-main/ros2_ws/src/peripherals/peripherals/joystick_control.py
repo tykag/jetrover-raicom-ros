@@ -34,7 +34,7 @@ HOME_POSITION = {
     'joint4': 375, 'joint5': 500, 'gripper': 500,
 }
 JOINT_STEP = 12     # 臂部关节每帧增量
-GRIPPER_STEP = 30   # 夹爪每帧增量（加大，按住时更明显）
+GRIPPER_STEP = 36   # 夹爪每帧增量
 
 # 动作组路径（与原有代码一致）
 DEFAULT_ACTION_PATH = '/home/ubuntu/share/arm_pc/ActionGroups'
@@ -78,7 +78,7 @@ class JoystickController(Node):
         self.last_axes = dict(zip(AXES_MAP, [0.0, ] * len(AXES_MAP)))
         self.last_buttons = dict(zip(BUTTON_MAP, [0.0, ] * len(BUTTON_MAP)))
         self.create_service(Trigger, '~/init_finish', self.get_node_state)
-        self.get_logger().info('joystick_control start: chassis + arm simultaneous')
+        self.get_logger().info('joystick_control start: STM32-aligned (mecanum sticks + arm buttons)')
         self.get_logger().info('action path: %s' % self.action_path)
 
     def get_node_state(self, request, response):
@@ -130,18 +130,21 @@ class JoystickController(Node):
             if abs(axes[k]) < self.min_value:
                 axes[k] = 0
 
-        # 底盘始终启用
+        # 底盘：对齐 STM32 app_ps2.c 绿灯摇杆
+        # LX=原地转, LY=前后, RX=左右平移, RY=前后(可叠加)
         twist = Twist()
         if self.machine == 'JetRover_Mecanum':
-            twist.linear.y = val_map(axes['lx'], -1, 1, -self.max_linear, self.max_linear)
-            twist.linear.x = val_map(axes['ly'], -1, 1, -self.max_linear, self.max_linear)
-            twist.angular.z = val_map(axes['rx'], -1, 1, -self.max_angular, self.max_angular)
+            vx = val_map(axes['ly'], -1, 1, -self.max_linear, self.max_linear)
+            vx += val_map(axes['ry'], -1, 1, -self.max_linear, self.max_linear)
+            twist.linear.x = max(-self.max_linear, min(self.max_linear, vx))
+            twist.linear.y = val_map(axes['rx'], -1, 1, -self.max_linear, self.max_linear)
+            twist.angular.z = val_map(axes['lx'], -1, 1, -self.max_angular, self.max_angular)
         elif self.machine == 'JetRover_Tank':
             twist.linear.x = val_map(axes['ly'], -1, 1, -self.max_linear, self.max_linear)
-            twist.angular.z = val_map(axes['rx'], -1, 1, -self.max_angular, self.max_angular)
+            twist.angular.z = val_map(axes['lx'], -1, 1, -self.max_angular, self.max_angular)
         elif self.machine == 'JetRover_Acker':
             twist.linear.x = val_map(axes['ly'], -1, 1, -self.max_linear, self.max_linear)
-            steering_angle = val_map(axes['rx'], -1, 1, -math.radians(150/1000*240), math.radians(150/1000*240))
+            steering_angle = val_map(axes['lx'], -1, 1, -math.radians(150/1000*240), math.radians(150/1000*240))
             if twist.linear.x == 0:
                 twist.linear.z = 1
             else:
@@ -150,24 +153,24 @@ class JoystickController(Node):
                     twist.angular.z = twist.linear.x/R
         self.mecanum_pub.publish(twist)
 
-    # ===== 方向键: joint1/joint2 =====
+    # ===== 方向键: #000 joint1 / #001 joint2（对齐 STM32 绿灯按键）=====
     def hat_yu_callback(self, new_state):
-        if new_state in (ButtonState.Pressed, ButtonState.Holding):
-            self.arm_step('joint2', JOINT_STEP)
-
-    def hat_yd_callback(self, new_state):
         if new_state in (ButtonState.Pressed, ButtonState.Holding):
             self.arm_step('joint2', -JOINT_STEP)
 
-    def hat_xl_callback(self, new_state):
+    def hat_yd_callback(self, new_state):
         if new_state in (ButtonState.Pressed, ButtonState.Holding):
-            self.arm_step('joint1', -JOINT_STEP)
+            self.arm_step('joint2', JOINT_STEP)
 
-    def hat_xr_callback(self, new_state):
+    def hat_xl_callback(self, new_state):
         if new_state in (ButtonState.Pressed, ButtonState.Holding):
             self.arm_step('joint1', JOINT_STEP)
 
-    # ===== 功能键: joint3/joint4 =====
+    def hat_xr_callback(self, new_state):
+        if new_state in (ButtonState.Pressed, ButtonState.Holding):
+            self.arm_step('joint1', -JOINT_STEP)
+
+    # ===== 功能键: #002 joint3 / #003 joint4 =====
     def triangle_callback(self, new_state):
         if new_state in (ButtonState.Pressed, ButtonState.Holding):
             self.arm_step('joint3', JOINT_STEP)
@@ -178,77 +181,50 @@ class JoystickController(Node):
 
     def square_callback(self, new_state):
         if new_state in (ButtonState.Pressed, ButtonState.Holding):
-            self.arm_step('joint4', JOINT_STEP)
+            self.arm_step('joint4', -JOINT_STEP)
 
     def circle_callback(self, new_state):
         if new_state in (ButtonState.Pressed, ButtonState.Holding):
-            self.arm_step('joint4', -JOINT_STEP)
+            self.arm_step('joint4', JOINT_STEP)
 
-    # ===== L1/R1: joint5 夹爪旋转 =====
+    # ===== L1/R1: #004 joint5 =====
     def l1_callback(self, new_state):
-        if new_state in (ButtonState.Pressed, ButtonState.Holding):
-            self.arm_step('joint5', JOINT_STEP)
-
-    def r1_callback(self, new_state):
         if new_state in (ButtonState.Pressed, ButtonState.Holding):
             self.arm_step('joint5', -JOINT_STEP)
 
-    # ===== L2/R2: 夹爪夹放 =====
-    def l2_callback(self, new_state):
+    def r1_callback(self, new_state):
         if new_state in (ButtonState.Pressed, ButtonState.Holding):
-            self.arm_step('gripper', GRIPPER_STEP)
+            self.arm_step('joint5', JOINT_STEP)
 
-    def r2_callback(self, new_state):
+    # ===== L2/R2: #005 夹爪（按钮通道备用）=====
+    def l2_callback(self, new_state):
         if new_state in (ButtonState.Pressed, ButtonState.Holding):
             self.arm_step('gripper', -GRIPPER_STEP)
 
-    # ===== SELECT: 运行 init 动作组回中位 =====
+    def r2_callback(self, new_state):
+        if new_state in (ButtonState.Pressed, ButtonState.Holding):
+            self.arm_step('gripper', GRIPPER_STEP)
+
+    # ===== SELECT/START: 对齐 STM32 $DJR! 急停 =====
     def select_callback(self, new_state):
         if new_state == ButtonState.Pressed:
-            if not self.action_running:
-                threading.Thread(target=self.run_action_thread, args=('init',), daemon=True).start()
-            else:
-                self.get_logger().info('action is running, ignore')
+            self.stop_motion()
 
     def start_callback(self, new_state):
-        # START点按：停止底盘 + 停止动作组 + 机械臂回中位
         if new_state == ButtonState.Pressed:
-            threading.Thread(target=self.stop_and_reset, daemon=True).start()
+            self.stop_motion()
 
-    def stop_and_reset(self):
-        # 1. 停止底盘
+    def stop_motion(self):
         self.mecanum_pub.publish(Twist())
-        self.get_logger().info('START: chassis stopped')
-
-        # 2. 停止当前动作组（如果在播放）
         if self.action_running:
             self.action_group.stop_action_group()
-            # 等待动作组线程退出（最多等0.5秒）
-            timeout = 0
-            while self.action_running and timeout < 50:
-                time.sleep(0.01)
-                timeout += 1
-            self.get_logger().info('START: action group stopped')
-
-        # 3. 启动init动作组回中位
-        if not self.action_running:
-            self.action_running = True
-            self.get_logger().info('START: run init action group')
-            try:
-                self.action_group.run_action('init')
-            except Exception as e:
-                self.get_logger().error('action error: %s' % str(e))
-            self.action_running = False
-            self.arm_position = dict(HOME_POSITION)
-            self.get_logger().info('START: reset finished')
-
-        # 4. 蜂鸣器提示
         msg = BuzzerState()
         msg.freq = 2500
         msg.on_time = 0.05
         msg.off_time = 0.01
         msg.repeat = 1
         self.buzzer_pub.publish(msg)
+        self.get_logger().info('SELECT/START: chassis + arm stopped')
 
     def l3_callback(self, new_state):
         pass
@@ -274,13 +250,12 @@ class JoystickController(Node):
             except Exception as e:
                 self.get_logger().error(str(e))
 
-        # 夹爪扳机：驱动板把 L2/R2 写到 axes[r2/l2]，buttons[l2/r2] 恒为 0
-        # 每个 joy 消息都检查，按住持续夹/放、松开即停
+        # 夹爪扳机：对齐 STM32 L2→#005P0600(-) / R2→#005P2400(+)
         r2_val = abs(axes['r2'])
         l2_val = abs(axes['l2'])
-        if r2_val > self.min_value:
+        if l2_val > self.min_value:
             self.arm_step('gripper', -GRIPPER_STEP)
-        elif l2_val > self.min_value:
+        elif r2_val > self.min_value:
             self.arm_step('gripper', GRIPPER_STEP)
 
         for key, value in buttons.items():

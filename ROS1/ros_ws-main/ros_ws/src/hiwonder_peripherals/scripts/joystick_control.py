@@ -11,7 +11,7 @@ import hiwonder_sdk.misc as misc
 import geometry_msgs.msg as geo_msg
 import sensor_msgs.msg as sensor_msg
 from ros_robot_controller.msg import BuzzerState
-from hiwonder_servo_msgs.msg import CommandDuration, MultiRawIdPosDur, RawIdPosDur
+from hiwonder_servo_msgs.msg import CommandDuration, MultiRawIdPosDur, RawIdPosDur, ServoStateList
 
 AXES_MAP = 'lx', 'ly', 'rx', 'ry', 'r2', 'l2', 'hat_x', 'hat_y'
 BUTTON_MAP = 'cross', 'circle', '', 'square', 'triangle', '', 'l1', 'r1', 'l2', 'r2', 'select', 'start', '', 'l3', 'r3', '', 'hat_xl', 'hat_xr', 'hat_yu', 'hat_yd', ''
@@ -31,19 +31,40 @@ HOME_POSITION = {
     'joint1': 500, 'joint2': 750, 'joint3': 0,
     'joint4': 375, 'joint5': 500, 'gripper': 500,
 }
-JOINT_SPEED = 12     # 每个控制周期移动的脉冲数（匀速，略加快）
-GRIPPER_SPEED = 14
+# 各关节软限位（脉冲）
+JOINT_LIMITS = {
+    'joint1': (0, 1000),
+    'joint2': (10, 650),
+    'joint3': (0, 1000),
+    'joint4': (0, 1000),
+    'joint5': (0, 1000),
+    'gripper': (0, 1000),
+}
+JOINT_SPEED = 12     # 匀速峰值（不变）
+GRIPPER_SPEED = 18
 ARM_CMD_PERIOD = 0.04   # 25Hz
 SERVO_DURATION = 0.05
+# 每周期速度变化上限：越小起步/停下越柔，峰值速度仍是 JOINT_SPEED
+JOINT_ACCEL = 3
+GRIPPER_ACCEL = 4
+# 松开：不对滞后反馈回拉；不额外硬锁
+SERVO_LOCK_DURATION = 0.20
+LOCK_PUBLISH = False
 # 扳机回滞，防止松开后在阈值附近反复启停导致抖动
 TRIG_ON = 0.30
 TRIG_OFF = 0.12
 # 方向键回滞
 HAT_ON = 0.60
 HAT_OFF = 0.30
+# 摇杆回滞（停住不抖）
+STICK_ON = 0.18
+STICK_OFF = 0.08
 
 # 动作组路径（ROS1 宿主机常见路径；也可用 ~action_path 覆盖）
 DEFAULT_ACTION_PATH = '/home/hiwonder/share/arm_pc/ActionGroups'
+
+ID_TO_JOINT = {1: 'joint1', 2: 'joint2', 3: 'joint3', 4: 'joint4', 5: 'joint5', 10: 'gripper'}
+
 
 
 class ButtonState(Enum):
@@ -120,21 +141,42 @@ class JoystickController:
         # 机械臂
         self.servo_pub = rospy.Publisher('/servo_controllers/port_id_1/multi_id_pos_dur', MultiRawIdPosDur, queue_size=1)
         self.arm_position = dict(HOME_POSITION)
+        self._servo_fb = dict(HOME_POSITION)  # 实车反馈脉冲
+        self._fb_ready = False
         self.action_group = ActionGroupController(self.servo_pub, self.action_path)
         self.action_running = False
-        # 按住时的速度（脉冲/周期），松开为 0；由定时器匀速推进
-        self._joint_vel = {name: 0 for name in list(ARM_JOINTS.keys()) + ['gripper']}
-        self._lock_joints = set()  # 松开后需要锁死当前位置的关节
+        # 目标速度（按键）与实际速度（加速度斜坡）
+        joint_names = list(ARM_JOINTS.keys()) + ['gripper']
+        self._joint_cmd = {name: 0 for name in joint_names}
+        self._joint_vel = {name: 0 for name in joint_names}
+        self._lock_joints = set()
         self._hat_active = {'hat_xl': 0, 'hat_xr': 0, 'hat_yu': 0, 'hat_yd': 0}
+        self._stick_active = {k: False for k in ('lx', 'ly', 'rx', 'ry')}
         self._arm_timer = rospy.Timer(rospy.Duration(ARM_CMD_PERIOD), self._arm_velocity_tick)
+        self.servo_fb_sub = rospy.Subscriber(
+            '/servo_controllers/port_id_1/servo_states', ServoStateList, self._servo_states_cb, queue_size=1)
 
         self.last_axes = dict(zip(AXES_MAP, [0.0, ] * len(AXES_MAP)))
         self.last_buttons = dict(zip(BUTTON_MAP, [0.0, ] * len(BUTTON_MAP)))
-        rospy.loginfo('joystick_control start: chassis + arm simultaneous')
+        rospy.loginfo('joystick_control start: STM32-aligned (mecanum sticks + arm buttons)')
         rospy.loginfo('action path: %s' % self.action_path)
 
-    def clamp(self, val, lo=0, hi=1000):
+    def clamp(self, val, joint=None, lo=0, hi=1000):
+        if joint and joint in JOINT_LIMITS:
+            lo, hi = JOINT_LIMITS[joint]
         return max(lo, min(hi, val))
+
+    def _servo_states_cb(self, msg):
+        for st in msg.servo_states:
+            name = ID_TO_JOINT.get(int(st.id))
+            if name is None:
+                continue
+            self._servo_fb[name] = int(st.position)
+        self._fb_ready = True
+
+    def sync_joint_from_fb(self, joint):
+        if joint in self._servo_fb:
+            self.arm_position[joint] = self.clamp(self._servo_fb[joint], joint)
 
     def publish_arm(self, joints=None, duration=SERVO_DURATION):
         if self.action_running and joints is not None and set(joints) != {'gripper'}:
@@ -154,31 +196,48 @@ class JoystickController:
         self.servo_pub.publish(MultiRawIdPosDur(id_pos_dur_list=positions))
 
     def set_joint_vel(self, joint, vel):
-        prev = self._joint_vel.get(joint, 0)
+        """设置目标速度；实际速度在 tick 里按加速度爬升/下降。"""
         vel = int(vel)
-        self._joint_vel[joint] = vel
-        # 由动到停：锁当前位置，取消未完成插补，消除停后抖动
-        if prev != 0 and vel == 0:
-            self._lock_joints.add(joint)
+        prev_cmd = self._joint_cmd.get(joint, 0)
+        # 由停到动：先跟真实位置对齐，避免首帧猛跳
+        if prev_cmd == 0 and self._joint_vel.get(joint, 0) == 0 and vel != 0:
+            self.sync_joint_from_fb(joint)
+        self._joint_cmd[joint] = vel
+
+    def _accel_step(self, joint, current, target):
+        accel = GRIPPER_ACCEL if joint == 'gripper' else JOINT_ACCEL
+        if current < target:
+            return min(target, current + accel)
+        if current > target:
+            return max(target, current - accel)
+        return current
 
     def _arm_velocity_tick(self, _event):
-        """按住匀速推进；松开后发一次 duration=0 锁位消抖。"""
+        """目标速度按加速度斜坡；峰值仍是 JOINT_SPEED。"""
         moving = []
-        for joint, vel in self._joint_vel.items():
-            if vel == 0:
-                continue
+        for joint in self._joint_vel:
             if self.action_running and joint != 'gripper':
+                self._joint_cmd[joint] = 0
+                self._joint_vel[joint] = 0
                 continue
-            self.arm_position[joint] = self.clamp(self.arm_position[joint] + vel)
-            moving.append(joint)
-            self._lock_joints.discard(joint)
+            target = self._joint_cmd[joint]
+            prev = self._joint_vel[joint]
+            vel = self._accel_step(joint, prev, target)
+            self._joint_vel[joint] = vel
+            if vel != 0:
+                self.arm_position[joint] = self.clamp(self.arm_position[joint] + vel, joint)
+                moving.append(joint)
+                self._lock_joints.discard(joint)
+            elif prev != 0 and target == 0:
+                # 减速到 0：标记柔停，不回拉反馈
+                self._lock_joints.add(joint)
         if moving:
             self.publish_arm(moving, SERVO_DURATION)
         if self._lock_joints:
             locks = list(self._lock_joints)
             self._lock_joints.clear()
-            # duration=0：立刻停在当前目标，避免继续滑移/振荡
-            self.publish_arm(locks, 0.0)
+            if LOCK_PUBLISH:
+                self.publish_arm(locks, SERVO_LOCK_DURATION)
 
     def arm_hold(self, joint, speed, new_state):
         if new_state in (ButtonState.Pressed, ButtonState.Holding):
@@ -195,6 +254,19 @@ class JoystickController:
         self._hat_active[name] = active
         return active
 
+    def _stick_with_hysteresis(self, name, value):
+        """摇杆回滞：松回死区后保持 0，避免停时来回抖。"""
+        mag = abs(value)
+        if self._stick_active[name]:
+            if mag < STICK_OFF:
+                self._stick_active[name] = False
+                return 0.0
+            return value
+        if mag > STICK_ON:
+            self._stick_active[name] = True
+            return value
+        return 0.0
+
     def run_action_thread(self, action_name):
         self.action_running = True
         for k in self._joint_vel:
@@ -205,25 +277,30 @@ class JoystickController:
         except Exception as e:
             rospy.logerr('action error: %s' % str(e))
         self.action_running = False
+        # 动作组结束后用反馈刷新，避免下一次首动猛跳
+        for name in list(ARM_JOINTS.keys()) + ['gripper']:
+            self.sync_joint_from_fb(name)
         rospy.loginfo('action finished: %s' % action_name)
 
     def axes_callback(self, axes):
         for k in ['lx', 'ly', 'rx', 'ry']:
-            if abs(axes[k]) < self.min_value:
-                axes[k] = 0
+            axes[k] = self._stick_with_hysteresis(k, axes[k])
 
-        # 底盘始终启用
+        # 底盘：对齐 STM32 app_ps2.c 绿灯摇杆
+        # LX=原地转, LY=前后, RX=左右平移, RY=前后(可叠加)
         twist = geo_msg.Twist()
         if self.machine == 'JetRover_Mecanum':
-            twist.linear.y = misc.val_map(axes['lx'], -1, 1, -self.max_linear, self.max_linear)
-            twist.linear.x = misc.val_map(axes['ly'], -1, 1, -self.max_linear, self.max_linear)
-            twist.angular.z = misc.val_map(axes['rx'], -1, 1, -self.max_angular, self.max_angular)
+            vx = misc.val_map(axes['ly'], -1, 1, -self.max_linear, self.max_linear)
+            vx += misc.val_map(axes['ry'], -1, 1, -self.max_linear, self.max_linear)
+            twist.linear.x = max(-self.max_linear, min(self.max_linear, vx))
+            twist.linear.y = misc.val_map(axes['rx'], -1, 1, -self.max_linear, self.max_linear)
+            twist.angular.z = misc.val_map(axes['lx'], -1, 1, -self.max_angular, self.max_angular)
         elif self.machine == 'JetRover_Tank':
             twist.linear.x = misc.val_map(axes['ly'], -1, 1, -self.max_linear, self.max_linear)
-            twist.angular.z = misc.val_map(axes['rx'], -1, 1, -self.max_angular, self.max_angular)
+            twist.angular.z = misc.val_map(axes['lx'], -1, 1, -self.max_angular, self.max_angular)
         elif self.machine == 'JetRover_Acker':
             twist.linear.x = misc.val_map(axes['ly'], -1, 1, -self.max_linear, self.max_linear)
-            steering_angle = misc.val_map(axes['rx'], -1, 1, -math.radians(150/1000*240), math.radians(150/1000*240))
+            steering_angle = misc.val_map(axes['lx'], -1, 1, -math.radians(150/1000*240), math.radians(150/1000*240))
             if twist.linear.x == 0:
                 twist.linear.z = 1
                 self.jointw.publish(CommandDuration(data=steering_angle, duration=0.02))
@@ -233,20 +310,22 @@ class JoystickController:
                     twist.angular.z = twist.linear.x/R
         self.mecanum_pub.publish(twist)
 
-    # ===== 方向键: joint1/joint2 =====
+    # ===== 方向键: #000 joint1 / #001 joint2（对齐 STM32 绿灯按键）=====
+    # LL→#000P2400, LR→#000P0600, LU→#001P0600, LD→#001P2400
     def hat_yu_callback(self, new_state):
-        self.arm_hold('joint2', JOINT_SPEED, new_state)
-
-    def hat_yd_callback(self, new_state):
         self.arm_hold('joint2', -JOINT_SPEED, new_state)
 
-    def hat_xl_callback(self, new_state):
-        self.arm_hold('joint1', -JOINT_SPEED, new_state)
+    def hat_yd_callback(self, new_state):
+        self.arm_hold('joint2', JOINT_SPEED, new_state)
 
-    def hat_xr_callback(self, new_state):
+    def hat_xl_callback(self, new_state):
         self.arm_hold('joint1', JOINT_SPEED, new_state)
 
-    # ===== 功能键: joint3/joint4 =====
+    def hat_xr_callback(self, new_state):
+        self.arm_hold('joint1', -JOINT_SPEED, new_state)
+
+    # ===== 功能键: #002 joint3 / #003 joint4 =====
+    # RU→#002P2400, RD→#002P0600, RR→#003P2400, RL→#003P0600
     def triangle_callback(self, new_state):
         self.arm_hold('joint3', JOINT_SPEED, new_state)
 
@@ -254,71 +333,48 @@ class JoystickController:
         self.arm_hold('joint3', -JOINT_SPEED, new_state)
 
     def square_callback(self, new_state):
-        self.arm_hold('joint4', JOINT_SPEED, new_state)
-
-    def circle_callback(self, new_state):
         self.arm_hold('joint4', -JOINT_SPEED, new_state)
 
-    # ===== L1/R1: joint5 夹爪旋转 =====
-    def l1_callback(self, new_state):
-        self.arm_hold('joint5', JOINT_SPEED, new_state)
+    def circle_callback(self, new_state):
+        self.arm_hold('joint4', JOINT_SPEED, new_state)
 
-    def r1_callback(self, new_state):
+    # ===== L1/R1: #004 joint5 夹爪旋转 =====
+    # L1→#004P0600, R1→#004P2400
+    def l1_callback(self, new_state):
         self.arm_hold('joint5', -JOINT_SPEED, new_state)
 
-    # ===== L2/R2 按钮通道（备用；主通道在 axes） =====
+    def r1_callback(self, new_state):
+        self.arm_hold('joint5', JOINT_SPEED, new_state)
+
+    # ===== L2/R2 按钮通道（备用；主通道在 axes）=====
     def l2_callback(self, new_state):
         pass
 
     def r2_callback(self, new_state):
         pass
 
-    # ===== SELECT: 运行 init 动作组回中位 =====
+    # ===== SELECT/START: 对齐 STM32 $DJR! 急停底盘+停臂 =====
     def select_callback(self, new_state):
         if new_state == ButtonState.Pressed:
-            if not self.action_running:
-                threading.Thread(target=self.run_action_thread, args=('init',), daemon=True).start()
-            else:
-                rospy.loginfo('action is running, ignore')
+            self.stop_motion()
 
     def start_callback(self, new_state):
-        # START点按：停止底盘 + 停止动作组 + 机械臂回中位
         if new_state == ButtonState.Pressed:
-            threading.Thread(target=self.stop_and_reset, daemon=True).start()
+            self.stop_motion()
 
-    def stop_and_reset(self):
-        # 1. 停止底盘
+    def stop_motion(self):
         self.mecanum_pub.publish(geo_msg.Twist())
-        rospy.loginfo('START: chassis stopped')
-
-        # 2. 停止当前动作组（如果在播放）
+        for k in self._joint_vel:
+            self.set_joint_vel(k, 0)
         if self.action_running:
             self.action_group.stop_action_group()
-            timeout = 0
-            while self.action_running and timeout < 50:
-                time.sleep(0.01)
-                timeout += 1
-            rospy.loginfo('START: action group stopped')
-
-        # 3. 启动init动作组回中位
-        if not self.action_running:
-            self.action_running = True
-            rospy.loginfo('START: run init action group')
-            try:
-                self.action_group.run_action('init')
-            except Exception as e:
-                rospy.logerr('action error: %s' % str(e))
-            self.action_running = False
-            self.arm_position = dict(HOME_POSITION)
-            rospy.loginfo('START: reset finished')
-
-        # 4. 蜂鸣器提示
         msg = BuzzerState()
         msg.freq = 2500
         msg.on_time = 0.05
         msg.off_time = 0.01
         msg.repeat = 1
         self.buzzer_pub.publish(msg)
+        rospy.loginfo('SELECT/START: chassis + arm stopped')
 
     def l3_callback(self, new_state):
         pass
@@ -346,24 +402,24 @@ class JoystickController:
             except Exception as e:
                 rospy.logerr(str(e))
 
-        # 夹爪扳机：回滞启停，松开后锁位，避免停后抖动
+        # 夹爪扳机：对齐 STM32 L2→#005P0600(-) / R2→#005P2400(+)
         r2_val = abs(axes['r2'])
         l2_val = abs(axes['l2'])
-        g_vel = self._joint_vel['gripper']
-        if g_vel < 0:  # 正在 R2 方向
-            if r2_val > TRIG_OFF:
+        g_cmd = self._joint_cmd['gripper']
+        if g_cmd < 0:  # 正在 L2 方向（收）
+            if l2_val > TRIG_OFF:
                 self.set_joint_vel('gripper', -GRIPPER_SPEED)
             else:
                 self.set_joint_vel('gripper', 0)
-        elif g_vel > 0:  # 正在 L2 方向
-            if l2_val > TRIG_OFF:
+        elif g_cmd > 0:  # 正在 R2 方向（张）
+            if r2_val > TRIG_OFF:
                 self.set_joint_vel('gripper', GRIPPER_SPEED)
             else:
                 self.set_joint_vel('gripper', 0)
         else:
-            if r2_val > TRIG_ON:
+            if l2_val > TRIG_ON:
                 self.set_joint_vel('gripper', -GRIPPER_SPEED)
-            elif l2_val > TRIG_ON:
+            elif r2_val > TRIG_ON:
                 self.set_joint_vel('gripper', GRIPPER_SPEED)
             else:
                 self.set_joint_vel('gripper', 0)

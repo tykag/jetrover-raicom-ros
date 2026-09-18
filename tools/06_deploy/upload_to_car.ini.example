@@ -1,0 +1,20 @@
+; 复制本文件为 upload_to_car.ini 后填写真实 IP / 密码
+; upload_to_car.ini 已被 gitignore，不会进仓库
+
+[car]
+host = 10.217.187.242
+port = 22
+user = hiwonder
+password = 在这里填密码
+connect_timeout = 15
+
+[files]
+; 相对路径相对「3 源码资料」根目录；也可写绝对路径
+local = ROS1/ros_ws-main/ros_ws/src/hiwonder_peripherals/scripts/joystick_control.py
+remote = /home/hiwonder/ros_ws/src/hiwonder_peripherals/scripts/joystick_control.py
+
+[options]
+backup = true
+verify_md5 = true
+restart_joystick = true
+strip_crlf = true
