@@ -1,0 +1,31 @@
+---
+description: 写交接文档后必须备份、提交并推 GitHub，同时做好版本链
+alwaysApply: true
+---
+
+# 交接文档：备份 + GitHub + 版本
+
+写完或改完 `项目总结/` 下的交接文档后，不要只留在本地。同一轮里做完下面三件事。
+
+## 1. 版本
+
+- 新结论用新文件：`项目总结/<主题>/YYYY-MM-DD-<主题>-<标题>.md`
+- 文首写清：功能、平台、**上一份以谁为准**、当前结论
+- 旧文档过时时，在旧文档文首加一行指向新文档，不要静默改掉旧结论
+- 同一天同主题大改：新文件加 `_v2`，或在文首写「更新日期 / 相对上一版改了什么」
+- 相关代码姿势、yaml 按现有习惯拷到 `tools/.../backup/YYYY-MM-DD-说明/`
+
+## 2. 备份并上传 GitHub
+
+用户没禁止提交时，交接文档写完就提交并 `git push origin HEAD`：
+
+- 只暂存交接文档、配套代码备份、明确一起改的源码；不要把 `tools/06_deploy/_ssh_*.py`、相机 jpg、密钥塞进提交
+- 提交信息写「为什么」：`Archive 2026-09-20 hand-eye grasp handover after real-car depth check.`
+- 当前远程：`origin` → `https://github.com/tykag/jetrover-raicom-ros.git`
+- 推完回报 commit 短哈希和 GitHub 仓库地址
+
+## 3. 不要
+
+- 写完交接文档只停在工作区
+- 用新结论覆盖旧文件且不留指向
+- 把未验证的实车数字当成最终版提交

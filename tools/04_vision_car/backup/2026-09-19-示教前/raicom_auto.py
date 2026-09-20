@@ -8,10 +8,7 @@ RAICOM 自主运行（不含语音）。
   → 导航 sort → 看板 → YOLO 锁 P1/P2 → 转回前方
   → 循环 8 次：导航 pick 附近 → YOLO 选一块 → 底盘对到 pick_aim → 抓 → 对应园区 → 放置
 
-单步试抓（人已经停在台前，侧面夹，不用再示教）：
-  rosservice call /raicom/test_grasp
-
-带导航的试抓：
+单步试抓（导航+YOLO+本节点已开）：
   rosservice call /raicom/test_pick
 
 路点教学（导航已起来且 Pose Estimate 对好）：
@@ -22,8 +19,6 @@ RAICOM 自主运行（不含语音）。
   ~task         full | mapping_only
   ~cycles       抓放次数，默认 8
   ~skip_nav     true 时不走底盘（人已经把车停到位）
-  ~grasp_mode   fixed 或 3d；默认 fixed，完成坐标/手眼标定后才启用 3d
-  ~place_settle_sec 到放置点后等待车体稳定的秒数，默认 0.6
 """
 from __future__ import print_function
 
@@ -44,7 +39,7 @@ from std_srvs.srv import Empty, EmptyResponse, Trigger, TriggerResponse
 import actionlib
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from raicom_arm import Arm, cmd_vel_topic, grasp_from_view, load_aim, load_poses, measure_stable_from_view, measure_from_view, servo_cmd_topic  # noqa: E402
+from raicom_arm import Arm, cmd_vel_topic, load_aim, load_poses, servo_cmd_topic  # noqa: E402
 
 WP_PATH = os.path.expanduser("~/yolo_models/raicom_waypoints.yaml")
 NEEDED = ("sort", "pick", "park1", "park2")
@@ -74,9 +69,6 @@ class AutoNode(object):
         self.task = str(rospy.get_param("~task", "full"))
         self.cycles = int(rospy.get_param("~cycles", 8))
         self.skip_nav = bool(rospy.get_param("~skip_nav", False))
-        self.grasp_mode = str(rospy.get_param("~grasp_mode", "fixed")).lower()
-        self.stack_capacity = int(rospy.get_param("~stack_capacity", 2))
-        self.place_settle_sec = max(0.0, float(rospy.get_param("~place_settle_sec", 0.6)))
         self.busy = False
         self.abort = False
         self.placed = {1: 0, 2: 0}
@@ -99,22 +91,12 @@ class AutoNode(object):
         rospy.Service("/raicom/start", Trigger, self._srv_start)
         rospy.Service("/raicom/abort", Empty, self._srv_abort)
         rospy.Service("/raicom/test_pick", Trigger, self._srv_test_pick)
-        rospy.Service("/raicom/test_grasp", Trigger, self._srv_test_grasp)
-        rospy.Service("/raicom/measure_grasp", Trigger, self._srv_measure_grasp)
         rospy.sleep(0.5)
         rospy.loginfo(
             "raicom_auto ready side=%s task=%s skip_nav=%s wp=%s",
             self.side, self.task, self.skip_nav, WP_PATH,
         )
-        rospy.loginfo(
-            "grasp_mode=%s stack_capacity=%d (use ~grasp_mode:=3d only after calibration)",
-            self.grasp_mode, self.stack_capacity,
-        )
-        rospy.loginfo("place_settle_sec=%.2f; stack order: stack1 low/high, then stack2 low/high",
-                      self.place_settle_sec)
         rospy.loginfo("start: rosservice call /raicom/start")
-        rospy.loginfo("side grasp here: rosservice call /raicom/test_grasp")
-        rospy.loginfo("measure only: rosservice call /raicom/measure_grasp")
         rospy.loginfo("try one grasp: rosservice call /raicom/test_pick")
         rospy.loginfo("save pose: rostopic pub -1 /raicom/save_pose std_msgs/String \"data: sort\"")
 
@@ -191,33 +173,6 @@ class AutoNode(object):
         threading.Thread(target=self._run_test_pick, daemon=True).start()
         return TriggerResponse(success=True, message="test_pick started")
 
-    def _srv_test_grasp(self, _req):
-        if self.busy:
-            return TriggerResponse(success=False, message="busy")
-        threading.Thread(target=self._run_test_grasp, daemon=True).start()
-        return TriggerResponse(success=True, message="test_grasp started")
-
-    def _srv_measure_grasp(self, _req):
-        if self.busy:
-            return TriggerResponse(success=False, message="busy")
-        self.set_yolo("detect")
-        self.last_target = None
-        target = self.wait_target(8.0)
-        self.set_yolo("idle")
-        if not target:
-            return TriggerResponse(success=False, message="no target")
-        measured = measure_stable_from_view(target["nx"], target["ny"])
-        if measured is None:
-            return TriggerResponse(success=False, message="no valid depth")
-        xyz = measured["xyz"]
-        return TriggerResponse(
-            success=True,
-            message="xyz=(%.3f, %.3f, %.3f)m depth=%.3fm valid=%d spread=%.3fm" % (
-                xyz[0], xyz[1], xyz[2], measured["depth"],
-                measured["valid_count"], measured["spread"],
-            ),
-        )
-
     def _kick(self):
         if self.busy:
             rospy.logwarn("already running")
@@ -245,7 +200,7 @@ class AutoNode(object):
         self.arm.poses, self.arm.path = load_poses()
 
     def kill_joystick(self):
-        os.system("rosnode kill /joystick_control /robot_1/joystick_control >/dev/null 2>&1")
+        os.system("rosnode kill /joystick_control >/dev/null 2>&1")
         rospy.sleep(0.3)
 
     def set_yolo(self, mode):
@@ -323,33 +278,15 @@ class AutoNode(object):
         n = self.placed[park]
         base = "park%d" % park
         alt = "park%d_b" % park
-        total_capacity = self.stack_capacity * 2
-        if n >= total_capacity:
-            rospy.logerr("P%d is full: %d blocks", park, total_capacity)
-            return None
-        # Each base waypoint represents one two-block stack. Once full, use
-        # the alternate stack waypoint for the next two blocks.
-        if n >= self.stack_capacity:
-            if valid_wp(self.waypoints.get(alt)):
-                return alt
-            rospy.logerr(
-                "P%d already has %d blocks; missing alternate waypoint %s for another stack",
-                park, self.stack_capacity, alt,
-            )
-            return None
+        if n >= 2 and valid_wp(self.waypoints.get(alt)):
+            return alt
         return base
 
-    def settle_for_place(self):
-        """Stop the base and let chassis/arm vibrations decay before release."""
-        self.stop_base()
-        if self.place_settle_sec > 0.0:
-            rospy.sleep(self.place_settle_sec)
-
     def place_height(self, park):
-        n = self.placed[park] % self.stack_capacity
-        return "high" if n == 1 else "low"
+        n = self.placed[park]
+        return "high" if (n % 2) == 1 else "low"
 
-    def align_to_aim(self, timeout=14.0, max_v=0.08):
+    def align_to_aim(self, timeout=14.0):
         """麦克纳姆把当前锁定目标对到 pick_aim。成功返回最后一帧 target。"""
         try:
             self.mb.cancel_all_goals()
@@ -361,7 +298,7 @@ class AutoNode(object):
         x_sign = float(aim.get("x_sign", 1.0))
         y_sign = float(aim.get("y_sign", 1.0))
         kp_x, kp_y = 0.35, 0.40
-        max_v = float(max_v)
+        max_v = 0.08
         tol_n, tol_f = 0.045, 0.055
         need_stable = 8
         rospy.loginfo("align to aim nx=%.3f ny=%.3f", aim_nx, aim_ny)
@@ -429,28 +366,6 @@ class AutoNode(object):
         aligned = self.align_to_aim()
         return aligned or tgt
 
-    def detect_and_grasp_3d(self):
-        """Detect from the calibrated top view and execute guarded 3D grasp."""
-        self.clear_lock()
-        if not self.goto("pick"):
-            return None
-        self.arm.go("look_cargo", 1.3)
-        self.set_yolo("detect")
-        rospy.sleep(0.8)
-        tgt = self.wait_target(8.0)
-        if not tgt:
-            rospy.logwarn("3d grasp: no cargo in calibrated view")
-            return None
-        self.lock_target(tgt)
-        rospy.loginfo("3d target %s conf=%.2f nx=%.3f ny=%.3f",
-                      tgt["name"], tgt["conf"], tgt["nx"], tgt["ny"])
-        self.set_yolo("idle")
-        self.reload_arm()
-        if not grasp_from_view(self.arm_pub, tgt["nx"], tgt["ny"]):
-            rospy.logerr("3d grasp rejected; no navigation to park")
-            return None
-        return tgt
-
     def _run_test_pick(self):
         self.busy = True
         self.abort = False
@@ -469,39 +384,6 @@ class AutoNode(object):
             self.arm.look_front()
         except Exception as e:
             rospy.logerr("test_pick: %s", e)
-            import traceback
-            traceback.print_exc()
-        finally:
-            self.clear_lock()
-            self.set_yolo("idle")
-            self.stop_base()
-            self.busy = False
-
-    def _run_test_grasp(self):
-        """停在台前。先抬到能看见顶面的角度，再用深度算出方块中心，逆解侧向夹取。不用旧抓取姿势。"""
-        self.busy = True
-        self.abort = False
-        try:
-            self.kill_joystick()
-            self.reload_arm()
-            self.clear_lock()
-            rospy.loginfo("test_grasp: look at top sticker, then side close")
-            self.arm.go("look_cargo", 1.3)
-            self.set_yolo("detect")
-            rospy.sleep(0.8)
-            tgt = self.wait_target(8.0)
-            if not tgt:
-                rospy.logerr("test_grasp: no target, camera must see the TOP sticker")
-                return
-            self.lock_target(tgt)
-            rospy.loginfo("see %s nx=%.3f ny=%.3f conf=%.2f", tgt["name"], tgt["nx"], tgt["ny"], tgt["conf"])
-            self.reload_arm()
-            ok = grasp_from_view(self.arm_pub, tgt["nx"], tgt["ny"])
-            if not ok:
-                rospy.logerr("test_grasp: 3d grasp failed")
-                return
-        except Exception as e:
-            rospy.logerr("test_grasp: %s", e)
             import traceback
             traceback.print_exc()
         finally:
@@ -541,10 +423,7 @@ class AutoNode(object):
                 if self.abort or rospy.is_shutdown():
                     break
                 rospy.loginfo("=== cycle %d/%d ===", i + 1, self.cycles)
-                if self.grasp_mode == "3d":
-                    tgt = self.detect_and_grasp_3d()
-                else:
-                    tgt = self.detect_and_align()
+                tgt = self.detect_and_align()
                 if not tgt:
                     rospy.logwarn("no cargo, skip cycle")
                     continue
@@ -552,22 +431,15 @@ class AutoNode(object):
                     "see %s conf=%.2f nx=%.2f ny=%.2f layer=%s",
                     tgt["name"], tgt["conf"], tgt.get("nx", -1), tgt.get("ny", -1), self.pick_layer(),
                 )
-                if self.grasp_mode != "3d":
-                    self.reload_arm()
-                    self.arm.pick(self.pick_layer())
+                self.reload_arm()
+                self.arm.pick(self.pick_layer())
                 self.picked += 1
                 park = self.park_for(tgt["name"], p1, p2)
                 wp = self.park_waypoint(park)
-                if not wp:
-                    break
                 if not self.goto(wp):
                     break
-                self.settle_for_place()
                 self.reload_arm()
-                height = self.place_height(park)
-                rospy.loginfo("placing %s on P%d stack layer=%s count_before=%d",
-                              tgt["name"], park, height, self.placed[park])
-                self.arm.place(height, park=park)
+                self.arm.place(self.place_height(park))
                 self.placed[park] += 1
                 rospy.loginfo("placed on P%d count=%s", park, self.placed)
             self.arm.look_front()
