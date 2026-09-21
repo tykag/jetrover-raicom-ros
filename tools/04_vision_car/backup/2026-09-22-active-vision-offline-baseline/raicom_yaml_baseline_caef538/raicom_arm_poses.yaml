@@ -1,0 +1,16 @@
+# RAICOM arm poses. save / save_aim 会覆盖对应项。
+# pick_aim = 货在夹爪正前方时的 YOLO 框中心；对位用。左右反了改 y_sign: -1
+look_front: {joint1: 500, joint2: 667, joint3: 42, joint4: 208, joint5: 500, gripper: 500}
+look_board: {joint1: 143, joint2: 518, joint3: 96, joint4: 222, joint5: 536, gripper: 500}
+look_board_b: {joint1: 857, joint2: 518, joint3: 96, joint4: 222, joint5: 536, gripper: 500}
+pick_hover: {joint1: 500, joint2: 520, joint3: 180, joint4: 420, joint5: 500, gripper: 100}
+pick_down: {joint1: 500, joint2: 259, joint3: 237, joint4: 640, joint5: 500, gripper: 100}
+pick_down_low: {joint1: 506, joint2: 129, joint3: 400, joint4: 500, joint5: 500, gripper: 100}
+pick_close: {joint1: 500, joint2: 259, joint3: 237, joint4: 640, joint5: 500, gripper: 350}
+pick_lift: {joint1: 500, joint2: 520, joint3: 180, joint4: 420, joint5: 500, gripper: 350}
+place_down_low: {joint1: 500, joint2: 148, joint3: 408, joint4: 516, joint5: 500, gripper: 350}
+place_down_high: {joint1: 500, joint2: 460, joint3: 200, joint4: 430, joint5: 500, gripper: 350}
+place_open: {joint1: 500, joint2: 380, joint3: 240, joint4: 470, joint5: 500, gripper: 100}
+look_cargo: {joint1: 491, joint2: 380, joint3: 339, joint4: 196, joint5: 500, gripper: 182}
+pick_aim: {nx: 0.543, ny: 0.076, x_sign: 1, y_sign: 1}
+pick_aim_low: {nx: 0.517, ny: 0.207, x_sign: 1, y_sign: 1}

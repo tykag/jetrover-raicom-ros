@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<!-- 全向 + 双地图导航 + 手柄。不要叠在厂方 bringup 上，先停自启再起。 -->
+<launch>
+    <arg name="map"          default="explore_amcl"/>
+    <arg name="planning_map" default="explore_plan"/>
+    <arg name="drive_type"   default="omni"/>
+    <arg name="desktop"      default="true"/>
+    <arg name="use_joy"      default="true"/>
+
+    <include file="$(find hiwonder_navigation)/launch/navigation.launch">
+        <arg name="map"          value="$(arg map)"/>
+        <arg name="planning_map" value="$(arg planning_map)"/>
+        <arg name="drive_type"   value="$(arg drive_type)"/>
+        <arg name="robot_name"   value="/"/>
+        <arg name="master_name"  value="/"/>
+    </include>
+
+    <include if="$(arg use_joy)" file="$(find hiwonder_peripherals)/launch/joystick_control.launch"/>
+
+    <group if="$(arg desktop)">
+        <node pkg="rviz" type="rviz" name="rviz"
+              args="-d $(find hiwonder_navigation)/rviz/navigation_desktop.rviz"/>
+        <node pkg="image_view" type="image_view" name="raicom_cam">
+            <remap from="image" to="/depth_cam/rgb/image_raw"/>
+        </node>
+    </group>
+</launch>
