@@ -13,16 +13,17 @@
 
 ## 当前主用（记住这几个）
 
-1. 开机环境：`01_startup/ros_env_auto.sh`
-2. 一键视觉：`01_startup/start_raicom_vision.sh`
-3. 检测程序：`04_vision_car/raicom_yolo_trt.py` → 拷到车上 `~/yolo_models/`
-4. 看板/抓放姿势：`04_vision_car/raicom_arm.py`（直发舵机，不必手写 d6a）
-5. 自主状态机：`04_vision_car/raicom_auto.py` + `01_startup/start_raicom_auto.sh`（说明见 `项目总结/总体/2026-09-18-总体-自主运行.md`）
-6. 赛规语音（WonderEchoPro 串口）：`04_vision_car/raicom_voice.py` + `01_startup/start_raicom_voice.sh`（协议表见 `项目总结/语音-WonderEchoPro/`，**不用**讯飞 mic_init）
-7. **手柄上传**：`06_deploy/upload_to_car.py`（先改 `upload_to_car.ini` 的 IP；密码 ini 已 gitignore）
-8. 总启动规则：`项目总结/开机自启/2026-09-06-开机自启-启动规则.md`
-9. 项目文档总入口：`项目总结/总体/2026-09-07-总体-交接.md`
-10. 手柄说明：`项目总结/机械臂/2026-09-17-机械臂-手柄STM32对齐.md`
+1. **比赛栈**：`01_startup/start_raicom_auto.sh` → 车上 `~/start_raicom_auto.sh`（`roslaunch raicom raicom.launch`）
+2. **运行时代码**：`ROS1/ros_ws-main/ros_ws/src/raicom/`（不要把 `04_vision_car/*.py` 当主源）
+3. **姿势/路点备份**：`04_vision_car/*.yaml`；车上以 `~/yolo_models/*.yaml` 为准
+4. 赛规语音：`04_vision_car/raicom_voice.py` + `01_startup/start_raicom_voice.sh`（**不用**讯飞 mic_init）
+5. 手柄上传：`06_deploy/upload_to_car.py`（ini 已 gitignore）
+6. 下次开机：`项目总结/总体/2026-09-21-总体-ROS包与下次开机交接.md`
+7. 开发流程：`项目总结/总体/2026-09-21-总体-开发流程.md`
+8. 比赛总目标：`项目总结/总体/2026-09-07-总体-交接.md`
+9. 手柄说明：`项目总结/机械臂/2026-09-17-机械臂-手柄STM32对齐.md`
+
+`06_deploy/_*.py` 是一次性探车脚本，不要当启动入口。
 
 ## 废弃/备用
 

@@ -84,3 +84,14 @@ tools/06_deploy/logs/
 *.jet
 *.bak
 tmp/
+
+# 误放进仓库的第三方技能克隆、本地统计
+planning-with-files/
+代码行数统计/
+ROS1/ros_ws-main/.cursor/
+
+# 一次性 SSH/探车脚本和抓图：本地可留，不要提交
+tools/06_deploy/_*.py
+tools/06_deploy/_*.sh
+tools/06_deploy/*.jpg
+tools/06_deploy/*.png

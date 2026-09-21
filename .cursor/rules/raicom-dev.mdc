@@ -1,0 +1,26 @@
+---
+description: RAICOM 日常开发入口、源码位置、启动方式和脚本政策
+alwaysApply: true
+---
+
+# RAICOM 开发约定
+
+- 下次开机和实车结论以 `项目总结/总体/2026-09-21-总体-ROS包与下次开机交接.md` 为准。
+- 仓库怎么开发以 `项目总结/总体/2026-09-21-总体-开发流程.md` 为准。
+- 比赛总目标仍看 `项目总结/总体/2026-09-07-总体-交接.md` 第 1 节。
+
+## 改代码
+
+运行时源码只改 `ROS1/ros_ws-main/ros_ws/src/raicom/`。姿势和路点以车上 `~/yolo_models/*.yaml` 为准，电脑备份在 `tools/04_vision_car/`。不要并行改两份 `raicom_auto.py`。
+
+## 启动
+
+反复用的只走：`~/start_raicom_auto.sh`（`roslaunch raicom raicom.launch`）、导航已在跑时 `roslaunch raicom nodes.launch`、服务 `/raicom/look_cargo` `/raicom/status` `/raicom/test_pick` `/raicom/abort`、话题 `/raicom/save_pose`。不要为这些再写 `tools/06_deploy/_ssh_*.py`。
+
+一次性探数才写短脚本，用完可删，不要当正式入口。
+
+## 抓放
+
+主路径是画面伺服 + 示教臂 + 深度辅助分层，不要把三维逆解当默认。`allow_high` 保持 false，直到高层示教完成。新 `pick` / `pick_aim` 未标定前禁止 `test_pick` 和 `/raicom/start`。
+
+日常是 ROS1 Melodic，不要切 Docker ROS2。技能用 `ros1`、`robot-perception`、`robot-bringup`（对照现有自启，不另造 ROS2 systemd）、`robotics-testing`；不用 `ros2` / `docker-ros2-development`。
