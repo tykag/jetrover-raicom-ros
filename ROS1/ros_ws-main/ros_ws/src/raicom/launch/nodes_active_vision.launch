@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<!-- Canary only. Not included by raicom.launch or nodes.launch. -->
+<launch>
+    <arg name="config" default="$(find raicom)/config/active_vision.yaml"/>
+
+    <node pkg="raicom" type="raicom_alignment_node.py" name="raicom_alignment" output="screen">
+        <param name="config" value="$(arg config)"/>
+    </node>
+    <node pkg="raicom" type="raicom_arm_node.py" name="raicom_arm_task" output="screen">
+        <param name="config" value="$(arg config)"/>
+    </node>
+    <node pkg="raicom" type="raicom_mission_node.py" name="raicom_mission" output="screen">
+        <param name="config" value="$(arg config)"/>
+    </node>
+</launch>
