@@ -10,6 +10,7 @@ RAICOM 手动+半自动抓取（固定姿势）。
   4. python3 raicom_grab_manual.py close      # 闭合+抬起
 
 低层（只剩一块在台面上）：
+  python3 raicom_grab_manual.py align_low     # 使用低层专用停车点
   python3 raicom_grab_manual.py ready_low     # 摆到低层抓取姿势
   python3 raicom_grab_manual.py close_low     # 闭合+抬起
 
@@ -139,6 +140,7 @@ def save_low(arm):
     """把当前舵机位置记成 pick_down_low。手柄调好低层姿势后用。"""
     pose = read_current_joints()
     poses, _old = load_poses()
+    pose["gripper"] = grip_of(arm, "pick_down", 100)
     poses["pick_down_low"] = pose
     path = poses_yaml_path()
     dump_poses(path, poses)
@@ -146,8 +148,8 @@ def save_low(arm):
     print("wrote", path)
 
 
-def do_align(timeout=14.0, max_v=0.08):
-    """YOLO 检测方块，麦克纳姆把方块对到 pick_aim 像素位置。"""
+def do_align(timeout=14.0, max_v=0.08, aim_name="pick_aim"):
+    """YOLO 检测方块，麦克纳姆把方块对到指定像素位置。"""
     vel_pub = rospy.Publisher(cmd_vel_topic(), Twist, queue_size=1)
 
     print("杀掉手柄节点避免冲突...")
@@ -172,12 +174,12 @@ def do_align(timeout=14.0, max_v=0.08):
     rospy.Subscriber("/raicom/target", String, _cb, queue_size=1)
     rospy.sleep(0.5)
 
-    aim = load_aim()
+    aim = load_aim(key=aim_name)
     aim_nx = float(aim["nx"])
     aim_ny = float(aim["ny"])
     x_sign = float(aim.get("x_sign", 1.0))
     y_sign = float(aim.get("y_sign", 1.0))
-    print("pick_aim: nx=%.3f ny=%.3f" % (aim_nx, aim_ny))
+    print("%s: nx=%.3f ny=%.3f" % (aim_name, aim_nx, aim_ny))
 
     kp_x, kp_y = 0.35, 0.40
     tol_n, tol_f = 0.045, 0.055
@@ -247,6 +249,7 @@ def do_align(timeout=14.0, max_v=0.08):
 def usage(arm):
     print("用法:")
     print("  align       YOLO 自动对位（需 YOLO 在跑）")
+    print("  align_low   YOLO 使用低层专用停车点对位")
     print("  ready       高层抓取姿势（夹爪张开）")
     print("  close       高层闭合+抬起")
     print("  ready_low   低层抓取姿势（夹爪张开）")
@@ -272,6 +275,12 @@ def main():
             print("\n对位成功，接下来: raicom_grab_manual.py ready")
         else:
             print("\n对位失败，用手柄手动调整")
+
+    elif cmd == "align_low":
+        if do_align(aim_name="pick_aim_low"):
+            print("\n低层对位成功，接下来: raicom_grab_manual.py ready_low")
+        else:
+            print("\n低层对位失败，用手柄手动调整")
 
     elif cmd == "ready":
         go_down(arm, "high")

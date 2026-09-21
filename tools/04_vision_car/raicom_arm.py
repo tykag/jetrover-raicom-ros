@@ -173,24 +173,33 @@ def _read_yaml_file(path):
     return data if isinstance(data, dict) else {}
 
 
-def load_aim(path=None):
+def load_aim(path=None, key="pick_aim"):
     aim = dict(DEFAULT_AIM)
+    found = False
     for cand in ([path] if path else []) + YAML_CANDIDATES:
         if not cand or not os.path.isfile(cand):
             continue
-        raw = _read_yaml_file(cand).get("pick_aim")
+        raw = _read_yaml_file(cand).get(key)
         if isinstance(raw, dict) and "nx" in raw and "ny" in raw:
             aim["nx"] = float(raw["nx"])
             aim["ny"] = float(raw["ny"])
             aim["x_sign"] = float(raw.get("x_sign", 1.0))
             aim["y_sign"] = float(raw.get("y_sign", 1.0))
+            found = True
             break
+    if not found and key != "pick_aim":
+        return load_aim(path, "pick_aim")
     return aim
 
 
 def dump_poses(path, poses, aim=None):
     if aim is None:
         aim = load_aim(path)
+    aim_low = None
+    if path and os.path.isfile(path):
+        raw_low = _read_yaml_file(path).get("pick_aim_low")
+        if isinstance(raw_low, dict) and "nx" in raw_low and "ny" in raw_low:
+            aim_low = raw_low
     lines = [
         "# RAICOM arm poses. save / save_aim 会覆盖对应项。\n",
         "# pick_aim = 货在夹爪正前方时的 YOLO 框中心；对位用。左右反了改 y_sign: -1\n",
@@ -217,6 +226,14 @@ def dump_poses(path, poses, aim=None):
         "pick_aim: {nx: %.3f, ny: %.3f, x_sign: %g, y_sign: %g}\n"
         % (float(aim["nx"]), float(aim["ny"]), float(aim.get("x_sign", 1)), float(aim.get("y_sign", 1)))
     )
+    if aim_low is not None:
+        lines.append(
+            "pick_aim_low: {nx: %.3f, ny: %.3f, x_sign: %g, y_sign: %g}\n"
+            % (
+                float(aim_low["nx"]), float(aim_low["ny"]),
+                float(aim_low.get("x_sign", 1)), float(aim_low.get("y_sign", 1)),
+            )
+        )
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         f.writelines(lines)
