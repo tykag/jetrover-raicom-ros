@@ -1,0 +1,22 @@
+# Goal
+string face
+string slot
+string layer
+string aim_key
+bool enable_base_motion
+---
+# Result
+bool success
+string status
+string slot
+string class_name
+int32 track_id
+string reason
+---
+# Feedback
+string phase
+float32 ex
+float32 ey
+float32 vx
+float32 vy
+int32 stable_frames

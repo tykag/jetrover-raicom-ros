@@ -1,0 +1,15 @@
+# Goal
+string command
+string pose_name
+string layer
+bool preserve_gripper
+int32 gripper
+---
+# Result
+bool success
+string status
+string reason
+---
+# Feedback
+string phase
+string pose_name

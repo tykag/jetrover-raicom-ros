@@ -1,0 +1,16 @@
+# Goal
+string mode
+string slot
+int32 cycles
+---
+# Result
+bool success
+string status
+string slot
+string class_name
+string reason
+---
+# Feedback
+string phase
+string slot
+string result

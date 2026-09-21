@@ -1,0 +1,9 @@
+Header header
+string phase
+string result
+string slot
+string class_name
+string target_park
+int32 picked
+bool busy
+string message
