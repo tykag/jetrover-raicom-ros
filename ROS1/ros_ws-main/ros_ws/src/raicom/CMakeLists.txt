@@ -8,6 +8,7 @@ catkin_install_python(PROGRAMS
   scripts/raicom_auto.py
   scripts/raicom_yolo_trt.py
   scripts/raicom_arm.py
+  scripts/raicom_voice.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

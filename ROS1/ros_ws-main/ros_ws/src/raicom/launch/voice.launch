@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<!-- WonderEchoPro：小鹿小鹿 → 执行运输任务 → /raicom/start_auto -->
+<launch>
+    <arg name="port" default="$(optenv WONDERECHO_PORT /dev/ring_mic)"/>
+
+    <env name="OPENBLAS_CORETYPE" value="ARMV8"/>
+    <env name="PYTHONUNBUFFERED" value="1"/>
+
+    <node pkg="raicom" type="raicom_voice.py" name="raicom_voice" output="screen" respawn="false" required="false">
+        <param name="port" value="$(arg port)"/>
+    </node>
+</launch>

@@ -15,7 +15,7 @@ alwaysApply: true
 
 ## 启动
 
-反复用的只走：`~/start_raicom_auto.sh`（`roslaunch raicom raicom.launch`）、导航已在跑时 `roslaunch raicom nodes.launch`、服务 `/raicom/look_cargo` `/raicom/status` `/raicom/test_pick` `/raicom/abort`、话题 `/raicom/save_pose`。不要为这些再写 `tools/06_deploy/_ssh_*.py`。
+反复用的只走：`~/start_raicom_auto.sh`（`roslaunch raicom raicom.launch`）、导航已在跑时 `roslaunch raicom nodes.launch`、语音 `roslaunch raicom voice.launch` 或 `ENABLE_VOICE=1`。服务 `/raicom/look_cargo` `/raicom/status` `/raicom/test_pick` `/raicom/abort`、话题 `/raicom/save_pose`。口令「小鹿小鹿 → 执行运输任务」发 `/raicom/start_auto`，与 `/raicom/start` 同一条自动流程。不要为这些再写 `tools/06_deploy/_ssh_*.py`。
 
 一次性探数才写短脚本，用完可删，不要当正式入口。
 

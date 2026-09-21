@@ -16,7 +16,7 @@
 1. **比赛栈**：`01_startup/start_raicom_auto.sh` → 车上 `~/start_raicom_auto.sh`（`roslaunch raicom raicom.launch`）
 2. **运行时代码**：`ROS1/ros_ws-main/ros_ws/src/raicom/`（不要把 `04_vision_car/*.py` 当主源）
 3. **姿势/路点备份**：`04_vision_car/*.yaml`；车上以 `~/yolo_models/*.yaml` 为准
-4. 赛规语音：`04_vision_car/raicom_voice.py` + `01_startup/start_raicom_voice.sh`（**不用**讯飞 mic_init）
+4. 赛规语音：`ENABLE_VOICE=1 ~/start_raicom_auto.sh` 或 `roslaunch raicom voice.launch`（口令：小鹿小鹿 → 执行运输任务）
 5. 手柄上传：`06_deploy/upload_to_car.py`（ini 已 gitignore）
 6. 下次开机：`项目总结/总体/2026-09-21-总体-ROS包与下次开机交接.md`
 7. 开发流程：`项目总结/总体/2026-09-21-总体-开发流程.md`

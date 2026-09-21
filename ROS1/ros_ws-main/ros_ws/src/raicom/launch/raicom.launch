@@ -1,11 +1,13 @@
 <?xml version="1.0"?>
 <!--
-  智械争锋主入口（不含语音）。
+  智械争锋主入口。
   先停厂方自启，再：
     roslaunch raicom raicom.launch
-    roslaunch raicom raicom.launch side:=B
+    ENABLE_VOICE=1 ~/start_raicom_auto.sh    # 带 WonderEcho 口令启动
   导航已在跑、只补 YOLO/状态机：
     roslaunch raicom nodes.launch
+  只补语音：
+    roslaunch raicom voice.launch
 -->
 <launch>
     <arg name="side"       default="A"/>
@@ -15,6 +17,7 @@
     <arg name="allow_high" default="false"/>
     <arg name="desktop"    default="true"/>
     <arg name="start_nav"  default="true"/>
+    <arg name="enable_voice" default="false"/>
 
     <include if="$(arg start_nav)" file="$(find raicom)/launch/nav.launch">
         <arg name="desktop" value="$(arg desktop)"/>
@@ -27,4 +30,6 @@
         <arg name="cycles"     value="$(arg cycles)"/>
         <arg name="allow_high" value="$(arg allow_high)"/>
     </include>
+
+    <include if="$(arg enable_voice)" file="$(find raicom)/launch/voice.launch"/>
 </launch>
