@@ -3,9 +3,7 @@
     <arg name="master_name" default="$(env ROBOT_MASTER)"/>
     <arg name="robot_name"  default="$(env ROBOT_HOST)"/>
     <arg name="app"         default="false"/>
-    <arg name="drive_type"    default="diff-corrected"/>
-    <arg name="map"           default=""/>
-    <arg name="planning_map"  default="$(arg map)"/>
+    <arg name="drive_type"  default="diff-corrected"/>
 
     <!--topic和frame设置-->
     <arg      if="$(eval robot_name == '/')"    name="topic_prefix" default=""/>
@@ -19,8 +17,6 @@
     <arg name="scan_topic"          default="$(arg topic_prefix)/scan"/>
     <arg     if="$(eval robot_name == master_name)" name="map_topic" default="$(arg topic_prefix)/map"/>
     <arg unless="$(eval robot_name == master_name)" name="map_topic" default="/$(arg master_name)/map"/>
-    <arg     if="$(eval arg('planning_map') != arg('map'))" name="costmap_map_topic" default="$(arg topic_prefix)/map_planning"/>
-    <arg unless="$(eval arg('planning_map') != arg('map'))" name="costmap_map_topic" default="$(arg map_topic)"/>
     <arg name="odom_topic"          default="$(arg topic_prefix)/odom"/>
 
     <arg     if="$(eval robot_name == master_name)" name="map_frame" default="$(arg frame_prefix)map"/>
@@ -49,12 +45,12 @@
             <arg name="use_teb"                         value="$(arg use_teb)"/>
             <arg name="cmd_vel_topic"                   value="$(arg cmd_vel_topic)"/>
 
-            <arg name="global_costmap_map_topic"        value="$(arg costmap_map_topic)"/>
+            <arg name="global_costmap_map_topic"        value="$(arg map_topic)"/>
             <arg name="global_costmap_sensor_frame"     value="$(arg base_frame)"/>
             <arg name="global_costmap_sensor_topic"     value="$(arg scan_topic)"/>
             <arg name="global_costmap_global_frame"     value="$(arg map_frame)"/>
             <arg name="global_costmap_robot_base_frame" value="$(arg base_frame)"/>
-            <arg name="local_costmap_map_topic"         value="$(arg costmap_map_topic)"/>
+            <arg name="local_costmap_map_topic"         value="$(arg map_topic)"/>
             <arg name="local_costmap_sensor_frame"      value="$(arg base_frame)"/>
             <arg name="local_costmap_sensor_topic"      value="$(arg scan_topic)"/>
             <arg name="local_costmap_global_frame"      value="$(arg odom_frame)"/>

@@ -1,0 +1,8 @@
+2026-09-21 双地图
+
+explore_amcl: 只保留雷达能扫到的围栏，建图时垫高扫进去的台子已擦成可走。
+explore_plan: 下午涂改版，台子涂黑，给 costmap 规划用。比赛台子不垫高，雷达扫不到，不能拿来做 AMCL。
+
+车上放到 ~/ros_ws/src/hiwonder_slam/maps/
+启动:
+  map:=explore_amcl planning_map:=explore_plan drive_type:=omni

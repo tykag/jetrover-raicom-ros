@@ -31,10 +31,7 @@ unset ROS_HOSTNAME
 
 echo "ROS_MASTER_URI=$ROS_MASTER_URI SIDE=$SIDE TASK=$TASK SKIP_NAV=$SKIP_NAV"
 
-roslaunch hiwonder_navigation navigation.launch \
-  map:=explore_amcl planning_map:=explore_plan \
-  robot_name:=/ master_name:=/ drive_type:=omni \
-  >/tmp/raicom_nav.log 2>&1 &
+roslaunch hiwonder_navigation navigation.launch map:=explore robot_name:=/ master_name:=/ >/tmp/raicom_nav.log 2>&1 &
 NAV_PID=$!
 echo "navigation pid $NAV_PID"
 sleep 12
